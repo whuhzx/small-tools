@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>播客稿转录视频字幕清洗工具</title>
+    <style>
+        :root {
+            --background-color: #fdfdfd;
+            --text-color: #333;
+            --primary-color: #007bff;
+            --border-color: #ddd;
+            --box-background: #fff;
+            --box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 0.2em;
+            font-weight: 300;
+        }
+        header p {
+            font-size: 1.1em;
+            color: #666;
+            max-width: 600px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+            flex: 1;
+        }
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        h2 {
+            font-weight: 400;
+            margin-top: 0;
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+        }
+        #input, #output {
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 15px;
+            font-size: 16px;
+            line-height: 1.6;
+            height: 100%;
+            min-height: 300px;
+            overflow-y: auto;
+            background-color: var(--box-background);
+            box-shadow: var(--box-shadow);
+        }
+        #input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+        }
+        #output {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #clean-btn {
+            margin-top: 20px;
+            padding: 12px 25px;
+            font-size: 1.2em;
+            color: #fff;
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        #clean-btn:hover {
+            background-color: #0056b3;
+        }
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            body {
+                padding: 10px;
+            }
+            h1 {
+                font-size: 2em;
+            }
+        }
+        #back-to-home {
+            margin-top: 20px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-size: 1em;
+        }
+        #back-to-home:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>播客稿转录视频字幕清洗工具</h1>
+        <p>将富文本粘贴到左侧输入框中，清理后的文本将显示在右侧。</p>
+    </header>
+
+    <div class="container">
+        <div class="panel">
+            <h2>输入</h2>
+            <div id="input" contenteditable="true" spellcheck="false"></div>
+        </div>
+        <div class="panel">
+            <h2>输出</h2>
+            <div id="output"></div>
+        </div>
+    </div>
+
+    <button id="clean-btn">清理文本</button>
+
+    <a href="index.html" id="back-to-home">返回首页</a>
+
+    <script>
+        document.getElementById('clean-btn').addEventListener('click', () => {
+            const inputDiv = document.getElementById('input');
+            const outputDiv = document.getElementById('output');
+
+            // 1. 删除掉文本中所有带有划线的内容
+            const tempDiv = document.createElement('div');
+            // To use getComputedStyle, element must be in the document.
+            // We can make it invisible and fixed to not affect scroll.
+            tempDiv.style.position = 'fixed';
+            tempDiv.style.top = '-9999px';
+            tempDiv.style.left = '-9999px';
+            document.body.appendChild(tempDiv);
+            tempDiv.innerHTML = inputDiv.innerHTML;
+
+            // Create a static list of elements to remove to avoid issues with live NodeLists
+            const elementsToRemove = [];
+            tempDiv.querySelectorAll('*').forEach(el => {
+                const style = window.getComputedStyle(el);
+                if (style.getPropertyValue('text-decoration-line').includes('line-through')) {
+                    elementsToRemove.push(el);
+                }
+            });
+
+            elementsToRemove.forEach(el => el.remove());
+            
+            let cleanedText = tempDiv.innerText;
+
+            document.body.removeChild(tempDiv);
+            
+
+            // 3. 更新后的标点符号处理规则
+            // 3a. 对于所有问号，保留问号，但是问号后要断行
+            cleanedText = cleanedText.replace(/([?？])/g, '$1\n');
+
+            // 3b. 处理句号和感叹号，替换为换行
+            cleanedText = cleanedText.replace(/[.!\u3002\uff01]/g, '\n');
+
+            // 3c. 处理逗号，但数字/时间之间的逗号不处理
+            // 首先，规范化数字中的逗号，去除两边的空格，例如 "2, 000" 会变成 "2,000"
+            cleanedText = cleanedText.replace(/(\d)\s*([,，])\s*(\d)/g, '$1$2$3');
+
+            // 然后，只替换那些不被数字包围的逗号
+            // 这会替换 "a,b", "a,1", "1,a" 中的逗号，但会保留 "1,2" 中的逗号
+            cleanedText = cleanedText.replace(/(?<!\d)[,，]|[,，](?!\d)/g, '\n');
+
+            // 4. 清理多余的空行和行首尾的空格
+            cleanedText = cleanedText.split('\n')
+                .map(line => line.trim())
+                .join('\n')
+                .replace(/\n{3,}/g, '\n\n') // Collapse 3+ newlines into 2 (max one empty line)
+                .trim();
+
+            outputDiv.innerText = cleanedText;
+        });
+    </script>
+
+</body>
+</html>
