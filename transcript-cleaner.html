@@ -194,21 +194,29 @@
             outputDiv.innerText = cleanedText;
 
             // 2. 将结果复制到剪贴板
+            const originalText = cleanBtn.innerText;
+            cleanBtn.innerText = '正在复制...';
+            cleanBtn.disabled = true;
+
             if (!navigator.clipboard) {
                 alert('您的浏览器不支持自动复制功能，请手动复制。');
-                return;
-            }
-            navigator.clipboard.writeText(cleanedText).then(() => {
-                const originalText = cleanBtn.innerText;
-                cleanBtn.innerText = '已复制!';
-                cleanBtn.disabled = true;
+                cleanBtn.innerText = '复制失败!';
                 setTimeout(() => {
                     cleanBtn.innerText = originalText;
                     cleanBtn.disabled = false;
                 }, 2000);
+                return;
+            }
+            navigator.clipboard.writeText(cleanedText).then(() => {
+                cleanBtn.innerText = '已复制!';
             }).catch(err => {
                 console.error('无法复制到剪贴板: ', err);
-                alert('复制失败，请检查浏览器权限或手动复制。');
+                cleanBtn.innerText = '复制失败!';
+            }).finally(() => {
+                setTimeout(() => {
+                    cleanBtn.innerText = originalText;
+                    cleanBtn.disabled = false;
+                }, 2000);
             });
         });
     </script>
