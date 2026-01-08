@@ -459,7 +459,7 @@
         <div class="settings-group">
           <div class="settings-row">
             <label>字号</label>
-            <input type="text" id="fontSize" value="30" pattern="[0-9]*" inputmode="numeric">
+            <input type="number" id="fontSize" value="30" min="20" max="50">
             <span class="unit">px</span>
             <span class="hint">(20-50)</span>
           </div>
@@ -597,17 +597,15 @@
       return html;
     }
 
-    // 获取当前样式
+    // 获取当前样式（不强制修改输入值）
     function getStyles() {
       let size = parseInt(fontSize.value) || 30;
       if (size < 20) size = 20;
       if (size > 50) size = 50;
-      fontSize.value = size;
 
       let tSize = parseInt(titleSize.value) || 38;
       if (tSize < 24) tSize = 24;
       if (tSize > 80) tSize = 80;
-      titleSize.value = tSize;
 
       return {
         fontSize: size + 'px',
@@ -729,16 +727,33 @@
       }
     }
 
+    // 校验字号范围（失焦时）
+    function validateFontSize() {
+      let size = parseInt(fontSize.value) || 30;
+      if (size < 20) size = 20;
+      if (size > 50) size = 50;
+      fontSize.value = size;
+      renderPreview();
+    }
+
+    function validateTitleSize() {
+      let size = parseInt(titleSize.value) || 38;
+      if (size < 24) size = 24;
+      if (size > 80) size = 80;
+      titleSize.value = size;
+      renderPreview();
+    }
+
     // 事件绑定
     inputText.addEventListener('input', renderPreview);
     exportBtn.addEventListener('click', exportImages);
-    fontSize.addEventListener('change', renderPreview);
     fontSize.addEventListener('input', renderPreview);
+    fontSize.addEventListener('blur', validateFontSize);
     lineHeight.addEventListener('change', renderPreview);
     padding.addEventListener('change', renderPreview);
     titleFont.addEventListener('change', renderPreview);
-    titleSize.addEventListener('change', renderPreview);
     titleSize.addEventListener('input', renderPreview);
+    titleSize.addEventListener('blur', validateTitleSize);
 
     // 初始化
     renderPreview();
