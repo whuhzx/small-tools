@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>晚点风格图片生成器</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <style>
+    :root {
+      --late-red: #E53935;
+      --late-dark: #1a1a1a;
+      --late-gray: #666;
+      --late-light: #f5f5f5;
+      --card-width: 1125px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--late-light);
+      min-height: 100vh;
+    }
+
+    /* 头部 */
+    .header {
+      background: var(--late-red);
+      color: white;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 2px;
+    }
+
+    .header-slogan {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .export-btn {
+      background: white;
+      color: var(--late-red);
+      border: none;
+      padding: 10px 24px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .export-btn:hover {
+      background: #fff5f5;
+      transform: translateY(-1px);
+    }
+
+    .export-btn:disabled {
+      background: rgba(255,255,255,0.5);
+      color: rgba(229,57,53,0.5);
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* 主体布局 */
+    .container {
+      display: flex;
+      height: calc(100vh - 52px);
+    }
+
+    /* 左侧输入区 */
+    .input-panel {
+      width: 420px;
+      padding: 20px;
+      background: #fff;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+
+    .panel-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .panel-section > label {
+      font-size: 13px;
+      color: var(--late-gray);
+      font-weight: 500;
+    }
+
+    .input-panel textarea {
+      flex: 1;
+      min-height: 280px;
+      width: 100%;
+      padding: 16px;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      line-height: 1.8;
+      resize: none;
+      font-family: inherit;
+    }
+
+    .input-panel textarea:focus {
+      outline: none;
+      border-color: var(--late-red);
+      box-shadow: 0 0 0 3px rgba(229,57,53,0.1);
+    }
+
+    /* 设置区 */
+    .settings-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px;
+      background: var(--late-light);
+      border-radius: 8px;
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .settings-row label {
+      min-width: 70px;
+      font-size: 13px;
+      color: var(--late-dark);
+    }
+
+    .settings-row select,
+    .settings-row input[type="number"] {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      background: white;
+    }
+
+    .settings-row input[type="number"] {
+      width: 70px;
+      flex: none;
+    }
+
+    .settings-row select:focus,
+    .settings-row input:focus {
+      outline: none;
+      border-color: var(--late-red);
+    }
+
+    .settings-row .unit {
+      font-size: 12px;
+      color: var(--late-gray);
+      min-width: 20px;
+    }
+
+    .settings-row .hint {
+      font-size: 11px;
+      color: #999;
+    }
+
+    .input-hint {
+      padding: 12px;
+      background: #fff5f5;
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--late-gray);
+      line-height: 1.8;
+    }
+
+    .input-hint code {
+      background: var(--late-red);
+      color: white;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: inherit;
+    }
+
+    /* 右侧预览区 */
+    .preview-panel {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background: #e0e0e0;
+    }
+
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .preview-header label {
+      font-size: 13px;
+      color: var(--late-gray);
+      font-weight: 500;
+    }
+
+    .preview-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+    }
+
+    /* 预览项 */
+    .preview-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* 晚点风格页面卡片 - 预览时用 zoom 缩放 */
+    .page-card {
+      width: var(--card-width);
+      background: #fff;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .preview-item .page-card {
+      zoom: 0.42;
+    }
+
+    /* 背景光晕效果 */
+    .page-card .glow {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60%;
+      background: radial-gradient(
+        ellipse 80% 50% at 50% 0%,
+        rgba(229, 57, 53, 0.07) 0%,
+        rgba(229, 57, 53, 0.03) 40%,
+        rgba(255, 255, 255, 0) 70%
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* 左右红色细线装饰 */
+    .page-card .left-line,
+    .page-card .right-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--late-red);
+      z-index: 2;
+    }
+
+    .page-card .left-line { left: 0; }
+    .page-card .right-line { right: 0; }
+
+    /* 顶部条纹（仅第一页） */
+    .page-card .top-banner {
+      background: var(--late-red);
+      padding: 10px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .top-banner .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: 3px;
+    }
+
+    /* 底部条纹（仅最后一页） */
+    .page-card .bottom-banner {
+      background: var(--late-red);
+      height: 8px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* 内容区域 */
+    .page-content {
+      padding: 70px 60px;
+      font-family: "Noto Sans SC", sans-serif;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* 标题样式 */
+    .page-content .title {
+      text-align: center;
+      margin-bottom: 40px;
+      line-height: 1.4;
+    }
+
+    .page-content .body-text {
+      color: var(--late-dark);
+      line-height: 2;
+      text-align: justify;
+    }
+
+    .page-content .body-text p {
+      margin-bottom: 1.4em;
+    }
+
+    .page-content .body-text p:last-child {
+      margin-bottom: 0;
+    }
+
+    .page-content .body-text .title {
+      margin-top: 0.5em;
+    }
+
+    .page-content .body-text .title:first-child {
+      margin-top: 0;
+    }
+
+    /* 列表样式 */
+    .page-content .body-text ul,
+    .page-content .body-text ol {
+      margin: 1.2em 0;
+      padding-left: 1.5em;
+    }
+
+    .page-content .body-text li {
+      margin-bottom: 0.8em;
+      line-height: 1.8;
+    }
+
+    /* 页码指示 */
+    .page-indicator {
+      font-size: 12px;
+      color: #888;
+      padding: 3px 10px;
+      background: rgba(255,255,255,0.8);
+      border-radius: 3px;
+    }
+
+    /* 空状态 */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 400px;
+      color: #999;
+      font-size: 14px;
+      gap: 8px;
+    }
+
+    .empty-state::before {
+      content: '';
+      width: 64px;
+      height: 64px;
+      background: #ddd;
+      border-radius: 50%;
+    }
+
+    /* 导出中状态 */
+    .exporting {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .exporting-content {
+      background: white;
+      padding: 40px 56px;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+
+    .exporting-content .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #f0f0f0;
+      border-top-color: var(--late-red);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    .exporting-content p {
+      color: var(--late-dark);
+      font-size: 15px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* 导出时的隐藏容器 */
+    #exportContainer {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+    }
+
+    #exportContainer .page-card {
+      zoom: 1;
+      box-shadow: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <h1>LatePost</h1>
+      <span class="header-slogan">晚点风格图片生成器</span>
+    </div>
+    <button class="export-btn" id="exportBtn" disabled>导出图片</button>
+  </div>
+
+  <div class="container">
+    <div class="input-panel">
+      <div class="panel-section">
+        <label>正文样式</label>
+        <div class="settings-group">
+          <div class="settings-row">
+            <label>字号</label>
+            <input type="text" id="fontSize" value="30" pattern="[0-9]*" inputmode="numeric">
+            <span class="unit">px</span>
+            <span class="hint">(20-50)</span>
+          </div>
+          <div class="settings-row">
+            <label>行高</label>
+            <select id="lineHeight">
+              <option value="1.8">1.8 (紧凑)</option>
+              <option value="2.0" selected>2.0 (标准)</option>
+              <option value="2.2">2.2 (宽松)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label>内边距</label>
+            <select id="padding">
+              <option value="48">48px (小)</option>
+              <option value="60" selected>60px (中)</option>
+              <option value="72">72px (大)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <label>标题样式</label>
+        <div class="settings-group">
+          <div class="settings-row">
+            <label>字体</label>
+            <select id="titleFont">
+              <option value="'Noto Serif SC', serif">思源宋体</option>
+              <option value="'Noto Sans SC', sans-serif">思源黑体</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label>字号</label>
+            <input type="number" id="titleSize" value="38" min="24" max="80">
+            <span class="unit">px</span>
+            <span class="hint">(24-80)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-section" style="flex: 1; display: flex; flex-direction: column;">
+        <label>输入文字内容</label>
+        <textarea id="inputText" placeholder="在此粘贴文字内容..." style="flex: 1;"></textarea>
+      </div>
+
+      <div class="input-hint">
+        <div><code>---</code> 分割页面</div>
+        <div><code>[title:标题文字]</code> 添加居中大标题</div>
+      </div>
+    </div>
+
+    <div class="preview-panel">
+      <div class="preview-header">
+        <label>预览效果（共 <span id="pageCount">0</span> 页）</label>
+      </div>
+      <div class="preview-wrapper" id="previewWrapper">
+        <div class="empty-state">请在左侧输入内容</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导出用的隐藏容器 -->
+  <div id="exportContainer"></div>
+
+  <div class="exporting hidden" id="exportingModal">
+    <div class="exporting-content">
+      <div class="spinner"></div>
+      <p>正在生成图片...</p>
+    </div>
+  </div>
+
+  <script>
+    // DOM 元素
+    const inputText = document.getElementById('inputText');
+    const previewWrapper = document.getElementById('previewWrapper');
+    const pageCount = document.getElementById('pageCount');
+    const exportBtn = document.getElementById('exportBtn');
+    const exportingModal = document.getElementById('exportingModal');
+    const exportContainer = document.getElementById('exportContainer');
+
+    // 样式设置
+    const fontSize = document.getElementById('fontSize');
+    const lineHeight = document.getElementById('lineHeight');
+    const padding = document.getElementById('padding');
+    const titleFont = document.getElementById('titleFont');
+    const titleSize = document.getElementById('titleSize');
+
+    // 解析文本，处理标题、段落和列表
+    function parseText(text, styles) {
+      const lines = text.split('\n');
+      let html = '';
+      let inList = false;
+      let listItems = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+
+        // 检测标题 [title:xxx]
+        const titleMatch = line.match(/^\[title:(.+)\]$/);
+        if (titleMatch) {
+          if (inList) {
+            html += '<ul>' + listItems.map(item => `<li>${item}</li>`).join('') + '</ul>';
+            inList = false;
+            listItems = [];
+          }
+          html += `<div class="title" style="font-family: ${styles.titleFont}; font-size: ${styles.titleSize}; font-weight: 700; color: var(--late-red);">${titleMatch[1]}</div>`;
+          continue;
+        }
+
+        // 检测列表项（以 - 开头）
+        if (line.startsWith('- ')) {
+          if (!inList) {
+            inList = true;
+            listItems = [];
+          }
+          listItems.push(line.substring(2));
+        } else {
+          if (inList) {
+            html += '<ul>' + listItems.map(item => `<li>${item}</li>`).join('') + '</ul>';
+            inList = false;
+            listItems = [];
+          }
+
+          if (line) {
+            html += `<p>${line}</p>`;
+          }
+        }
+      }
+
+      if (inList) {
+        html += '<ul>' + listItems.map(item => `<li>${item}</li>`).join('') + '</ul>';
+      }
+
+      return html;
+    }
+
+    // 获取当前样式
+    function getStyles() {
+      let size = parseInt(fontSize.value) || 30;
+      if (size < 20) size = 20;
+      if (size > 50) size = 50;
+      fontSize.value = size;
+
+      let tSize = parseInt(titleSize.value) || 38;
+      if (tSize < 24) tSize = 24;
+      if (tSize > 80) tSize = 80;
+      titleSize.value = tSize;
+
+      return {
+        fontSize: size + 'px',
+        lineHeight: lineHeight.value,
+        padding: padding.value + 'px',
+        titleFont: titleFont.value,
+        titleSize: tSize + 'px'
+      };
+    }
+
+    // 生成页面卡片 HTML
+    function generatePageCard(content, index, total, styles) {
+      const isFirst = index === 0;
+      const isLast = index === total - 1;
+
+      let topBanner = '';
+      let bottomBanner = '';
+
+      if (isFirst) {
+        topBanner = `
+          <div class="top-banner">
+            <span class="logo">LatePost</span>
+          </div>
+        `;
+      }
+
+      if (isLast) {
+        bottomBanner = `<div class="bottom-banner"></div>`;
+      }
+
+      return `
+        <div class="page-card">
+          <div class="glow"></div>
+          <div class="left-line"></div>
+          <div class="right-line"></div>
+          ${topBanner}
+          <div class="page-content" style="padding: 70px ${styles.padding};">
+            <div class="body-text" style="font-size: ${styles.fontSize}; line-height: ${styles.lineHeight};">
+              ${content}
+            </div>
+          </div>
+          ${bottomBanner}
+        </div>
+      `;
+    }
+
+    // 渲染预览
+    function renderPreview() {
+      const text = inputText.value.trim();
+      const styles = getStyles();
+
+      if (!text) {
+        previewWrapper.innerHTML = '<div class="empty-state">请在左侧输入内容</div>';
+        pageCount.textContent = '0';
+        exportBtn.disabled = true;
+        return;
+      }
+
+      const pages = text.split(/\n---\n|\n---$|^---\n/).filter(p => p.trim());
+      pageCount.textContent = pages.length;
+      exportBtn.disabled = false;
+
+      previewWrapper.innerHTML = pages.map((pageText, index) => {
+        const content = parseText(pageText.trim(), styles);
+        const cardHtml = generatePageCard(content, index, pages.length, styles);
+        return `
+          <div class="preview-item">
+            ${cardHtml}
+            <span class="page-indicator">第 ${index + 1} 页 / 共 ${pages.length} 页</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 导出图片
+    async function exportImages() {
+      const text = inputText.value.trim();
+      const styles = getStyles();
+      const pages = text.split(/\n---\n|\n---$|^---\n/).filter(p => p.trim());
+
+      if (pages.length === 0) return;
+
+      exportingModal.classList.remove('hidden');
+      exportBtn.disabled = true;
+
+      try {
+        const zip = new JSZip();
+
+        for (let i = 0; i < pages.length; i++) {
+          const content = parseText(pages[i].trim(), styles);
+          const cardHtml = generatePageCard(content, i, pages.length, styles);
+
+          // 创建临时元素
+          exportContainer.innerHTML = cardHtml;
+          const card = exportContainer.querySelector('.page-card');
+
+          const canvas = await html2canvas(card, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+          });
+
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          zip.file(`page_${String(i + 1).padStart(2, '0')}.png`, blob);
+        }
+
+        exportContainer.innerHTML = '';
+
+        const content = await zip.generateAsync({ type: 'blob' });
+        const timestamp = new Date().toISOString().slice(0, 10);
+        saveAs(content, `晚点风格_${timestamp}.zip`);
+      } catch (error) {
+        console.error('导出失败:', error);
+        alert('导出失败，请重试');
+      } finally {
+        exportingModal.classList.add('hidden');
+        exportBtn.disabled = false;
+      }
+    }
+
+    // 事件绑定
+    inputText.addEventListener('input', renderPreview);
+    exportBtn.addEventListener('click', exportImages);
+    fontSize.addEventListener('change', renderPreview);
+    fontSize.addEventListener('input', renderPreview);
+    lineHeight.addEventListener('change', renderPreview);
+    padding.addEventListener('change', renderPreview);
+    titleFont.addEventListener('change', renderPreview);
+    titleSize.addEventListener('change', renderPreview);
+    titleSize.addEventListener('input', renderPreview);
+
+    // 初始化
+    renderPreview();
+  </script>
+</body>
+</html>
