@@ -267,6 +267,32 @@
       z-index: 0;
     }
 
+    /* 水印容器 */
+    .page-card .watermark-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* 单个水印 */
+    .page-card .watermark {
+      position: absolute;
+      width: 200px;
+      opacity: 0.4;
+      transform: rotate(-30deg);
+      pointer-events: none;
+    }
+
+    .page-card .watermark img {
+      width: 100%;
+      height: auto;
+    }
+
     /* 左右红色细线装饰 */
     .page-card .left-line,
     .page-card .right-line {
@@ -639,6 +665,7 @@
       return `
         <div class="page-card">
           <div class="glow"></div>
+          <div class="watermark-container"></div>
           <div class="left-line"></div>
           <div class="right-line"></div>
           ${topBanner}
@@ -650,6 +677,30 @@
           ${bottomBanner}
         </div>
       `;
+    }
+
+    // 动态生成水印
+    function generateWatermarks(container, height) {
+      const rowHeight = 280; // 每行水印间隔
+      const startTop = 100; // 顶部留白
+      const rows = Math.ceil((height - startTop) / rowHeight);
+      let html = '';
+
+      for (let i = 0; i < rows; i++) {
+        const top = startTop + i * rowHeight;
+        // 交错排列：奇数行偏左，偶数行偏右
+        const leftOffset = (i % 2 === 0) ? 5 : 30;
+
+        // 每行放 2-3 个水印
+        html += `<div class="watermark" style="top: ${top}px; left: ${leftOffset}%;"><img src="./logo.png"></div>`;
+        html += `<div class="watermark" style="top: ${top}px; left: ${leftOffset + 45}%;"><img src="./logo.png"></div>`;
+
+        if (i % 2 === 0) {
+          html += `<div class="watermark" style="top: ${top}px; left: ${leftOffset + 90}%;"><img src="./logo.png"></div>`;
+        }
+      }
+
+      container.innerHTML = html;
     }
 
     // 渲染预览
@@ -678,6 +729,17 @@
           </div>
         `;
       }).join('');
+
+      // 动态生成水印
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.page-card').forEach(card => {
+          const height = card.offsetHeight / 0.42; // 还原实际高度（因为 zoom: 0.42）
+          const container = card.querySelector('.watermark-container');
+          if (container) {
+            generateWatermarks(container, height);
+          }
+        });
+      });
     }
 
     // 导出图片
@@ -701,6 +763,13 @@
           // 创建临时元素
           exportContainer.innerHTML = cardHtml;
           const card = exportContainer.querySelector('.page-card');
+
+          // 动态生成水印
+          const height = card.offsetHeight;
+          const wmContainer = card.querySelector('.watermark-container');
+          if (wmContainer) {
+            generateWatermarks(wmContainer, height);
+          }
 
           const canvas = await html2canvas(card, {
             scale: 2,
