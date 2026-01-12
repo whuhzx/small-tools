@@ -282,7 +282,7 @@
     .page-card .watermark {
       position: absolute;
       width: 200px;
-      opacity: 0.4;
+      opacity: 0.7;
       transform: rotate(-30deg);
       pointer-events: none;
     }
@@ -379,6 +379,21 @@
     .page-content .body-text li {
       margin-bottom: 0.8em;
       line-height: 1.8;
+    }
+
+    /* 引用样式 */
+    .page-content .body-text .quote {
+      background: #f7f7f7;
+      border-left: 4px solid var(--late-red);
+      padding: 16px 20px;
+      margin: 0 0 1.4em 0;
+      color: #555;
+    }
+
+    /* 右对齐样式 */
+    .page-content .body-text .align-right {
+      text-align: right;
+      margin-bottom: 20px;
     }
 
     /* 页码指示 */
@@ -484,7 +499,7 @@
         <div class="settings-group">
           <div class="settings-row">
             <label>字号</label>
-            <input type="number" id="fontSize" value="30" min="20" max="50">
+            <input type="number" id="fontSize" value="36" min="20" max="50">
             <span class="unit">px</span>
             <span class="hint">(20-50)</span>
           </div>
@@ -519,7 +534,7 @@
           </div>
           <div class="settings-row">
             <label>字号</label>
-            <input type="number" id="titleSize" value="38" min="24" max="80">
+            <input type="number" id="titleSize" value="42" min="24" max="80">
             <span class="unit">px</span>
             <span class="hint">(24-80)</span>
           </div>
@@ -533,7 +548,9 @@
 
       <div class="input-hint">
         <div><code>---</code> 分割页面</div>
-        <div><code>[title:标题文字]</code> 添加居中大标题</div>
+        <div><code>[title:标题文字]</code> 居中大标题</div>
+        <div><code>[right:文字]</code> 右对齐文字</div>
+        <div><code>> 引用内容</code> 引用块</div>
       </div>
     </div>
 
@@ -573,12 +590,32 @@
     const titleFont = document.getElementById('titleFont');
     const titleSize = document.getElementById('titleSize');
 
-    // 解析文本，处理标题、段落和列表
+    // 解析文本，处理标题、段落、列表、引用和右对齐
     function parseText(text, styles) {
       const lines = text.split('\n');
       let html = '';
       let inList = false;
       let listItems = [];
+      let inQuote = false;
+      let quoteLines = [];
+
+      // 结束列表
+      function flushList() {
+        if (inList) {
+          html += '<ul>' + listItems.map(item => `<li>${item}</li>`).join('') + '</ul>';
+          inList = false;
+          listItems = [];
+        }
+      }
+
+      // 结束引用
+      function flushQuote() {
+        if (inQuote) {
+          html += `<div class="quote">${quoteLines.join('<br>')}</div>`;
+          inQuote = false;
+          quoteLines = [];
+        }
+      }
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -586,49 +623,65 @@
         // 检测标题 [title:xxx]
         const titleMatch = line.match(/^\[title:(.+)\]$/);
         if (titleMatch) {
-          if (inList) {
-            html += '<ul>' + listItems.map(item => `<li>${item}</li>`).join('') + '</ul>';
-            inList = false;
-            listItems = [];
-          }
+          flushList();
+          flushQuote();
           html += `<div class="title" style="font-family: ${styles.titleFont}; font-size: ${styles.titleSize}; font-weight: 700; color: var(--late-red);">${titleMatch[1]}</div>`;
+          continue;
+        }
+
+        // 检测右对齐 [right:xxx]
+        const rightMatch = line.match(/^\[right:(.+)\]$/);
+        if (rightMatch) {
+          flushList();
+          flushQuote();
+          html += `<div class="align-right">${rightMatch[1]}</div>`;
+          continue;
+        }
+
+        // 检测引用（以 > 开头）
+        if (line.startsWith('> ') || line === '>') {
+          flushList();
+          if (!inQuote) {
+            inQuote = true;
+            quoteLines = [];
+          }
+          quoteLines.push(line.substring(1).trim());
           continue;
         }
 
         // 检测列表项（以 - 开头）
         if (line.startsWith('- ')) {
+          flushQuote();
           if (!inList) {
             inList = true;
             listItems = [];
           }
           listItems.push(line.substring(2));
-        } else {
-          if (inList) {
-            html += '<ul>' + listItems.map(item => `<li>${item}</li>`).join('') + '</ul>';
-            inList = false;
-            listItems = [];
-          }
+          continue;
+        }
 
-          if (line) {
-            html += `<p>${line}</p>`;
-          }
+        // 普通段落
+        flushList();
+        flushQuote();
+
+        if (line) {
+          html += `<p>${line}</p>`;
         }
       }
 
-      if (inList) {
-        html += '<ul>' + listItems.map(item => `<li>${item}</li>`).join('') + '</ul>';
-      }
+      flushList();
+      flushQuote();
 
       return html;
     }
 
     // 获取当前样式（不强制修改输入值）
     function getStyles() {
-      let size = parseInt(fontSize.value) || 30;
+      let size = parseInt(fontSize.value) || 36;
       if (size < 20) size = 20;
       if (size > 50) size = 50;
 
-      let tSize = parseInt(titleSize.value) || 38;
+      let tSize = parseInt(titleSize.value) || 42;
       if (tSize < 24) tSize = 24;
       if (tSize > 80) tSize = 80;
 
@@ -797,7 +850,7 @@
 
     // 校验字号范围（失焦时）
     function validateFontSize() {
-      let size = parseInt(fontSize.value) || 30;
+      let size = parseInt(fontSize.value) || 36;
       if (size < 20) size = 20;
       if (size > 50) size = 50;
       fontSize.value = size;
@@ -805,7 +858,7 @@
     }
 
     function validateTitleSize() {
-      let size = parseInt(titleSize.value) || 38;
+      let size = parseInt(titleSize.value) || 42;
       if (size < 24) size = 24;
       if (size > 80) size = 80;
       titleSize.value = size;
