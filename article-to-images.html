@@ -355,7 +355,8 @@
       color: var(--late-dark);
       line-height: 2;
       text-align: justify;
-      word-break: break-all;
+      word-break: normal;
+      overflow-wrap: break-word;
     }
 
     .page-content .body-text p {
@@ -399,6 +400,28 @@
     .page-content .body-text .align-right {
       text-align: right;
       margin-bottom: 20px;
+    }
+
+    .page-content .body-text .export-block:last-child {
+      margin-bottom: 0 !important;
+    }
+
+    .page-content .body-text .export-line {
+      white-space: nowrap;
+    }
+
+    .page-content .body-text .export-unit {
+      display: inline-block;
+      white-space: pre;
+      vertical-align: top;
+    }
+
+    .page-content .body-text .export-list {
+      margin: 1.2em 0;
+    }
+
+    .page-content .body-text .export-list-item:last-child {
+      margin-bottom: 0 !important;
     }
 
     /* 页码指示 */
@@ -605,89 +628,366 @@
         .catch(() => {});
     })();
 
-    // 解析文本，处理标题、段落、列表、引用和右对齐
-    function parseText(text, styles) {
+    const CARD_WIDTH = 1125;
+    const measureCanvas = document.createElement('canvas');
+    const measureContext = measureCanvas.getContext('2d');
+    const textMeasureCache = new Map();
+
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function parseBlocks(text) {
       const lines = text.split('\n');
-      let html = '';
-      let inList = false;
+      const blocks = [];
       let listItems = [];
-      let inQuote = false;
       let quoteLines = [];
 
-      // 结束列表
       function flushList() {
-        if (inList) {
-          html += '<ul>' + listItems.map(item => `<li>${item}</li>`).join('') + '</ul>';
-          inList = false;
+        if (listItems.length) {
+          blocks.push({ type: 'list', items: listItems });
           listItems = [];
         }
       }
 
-      // 结束引用
       function flushQuote() {
-        if (inQuote) {
-          html += `<div class="quote">${quoteLines.join('<br>')}</div>`;
-          inQuote = false;
+        if (quoteLines.length) {
+          blocks.push({ type: 'quote', lines: quoteLines });
           quoteLines = [];
         }
       }
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
 
-        // 检测标题 [title:xxx]
         const titleMatch = line.match(/^\[title:(.+)\]$/);
         if (titleMatch) {
           flushList();
           flushQuote();
-          html += `<div class="title" style="font-family: ${styles.titleFont}; font-size: ${styles.titleSize}; font-weight: 700; color: var(--late-red);">${titleMatch[1]}</div>`;
+          blocks.push({ type: 'title', text: titleMatch[1] });
           continue;
         }
 
-        // 检测右对齐 [right:xxx]
         const rightMatch = line.match(/^\[right:(.+)\]$/);
         if (rightMatch) {
           flushList();
           flushQuote();
-          html += `<div class="align-right">${rightMatch[1]}</div>`;
+          blocks.push({ type: 'right', text: rightMatch[1] });
           continue;
         }
 
-        // 检测引用（以 > 开头）
         if (line.startsWith('> ') || line === '>') {
           flushList();
-          if (!inQuote) {
-            inQuote = true;
-            quoteLines = [];
-          }
           quoteLines.push(line.substring(1).trim());
           continue;
         }
 
-        // 检测列表项（以 - 开头）
         if (line.startsWith('- ')) {
           flushQuote();
-          if (!inList) {
-            inList = true;
-            listItems = [];
-          }
           listItems.push(line.substring(2));
           continue;
         }
 
-        // 普通段落
         flushList();
         flushQuote();
 
         if (line) {
-          html += `<p>${line}</p>`;
+          blocks.push({ type: 'paragraph', text: line });
         }
       }
 
       flushList();
       flushQuote();
+      return blocks;
+    }
 
-      return html;
+    function renderPreviewContent(blocks, styles) {
+      return blocks.map((block, index) => {
+        switch (block.type) {
+          case 'title':
+            return `<div class="title" style="font-family: ${styles.titleFont}; font-size: ${styles.titleSize}; font-weight: 700; color: var(--late-red);">${escapeHtml(block.text)}</div>`;
+          case 'right':
+            return `<div class="align-right">${escapeHtml(block.text)}</div>`;
+          case 'quote':
+            return `<div class="quote">${block.lines.map(escapeHtml).join('<br>')}</div>`;
+          case 'list':
+            return `<ul>${block.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+          case 'paragraph':
+            return `<p>${escapeHtml(block.text)}</p>`;
+          default:
+            return '';
+        }
+      }).join('');
+    }
+
+    function getTextMetrics(fontSpec) {
+      const key = JSON.stringify(fontSpec);
+      if (textMeasureCache.has(key)) {
+        return textMeasureCache.get(key);
+      }
+
+      const canvasFont = `${fontSpec.weight || 400} ${fontSpec.size}px ${fontSpec.family}`;
+      const metrics = {
+        font: canvasFont,
+        measure(text) {
+          measureContext.font = canvasFont;
+          return measureContext.measureText(text).width;
+        }
+      };
+
+      textMeasureCache.set(key, metrics);
+      return metrics;
+    }
+
+    function isAsciiWordChar(char) {
+      return /[A-Za-z0-9%&+./:_='’-]/.test(char);
+    }
+
+    function tokenizeUnits(text, metrics) {
+      const openingPunctuation = new Set(['（', '【', '《', '〈', '「', '『', '‘', '“', '(']);
+      const closingPunctuation = new Set(['，', '。', '！', '？', '；', '：', '、', '）', '】', '》', '〉', '」', '』', '’', '”', ',', '.', '!', '?', ';', ':', ')', '%']);
+      const chars = Array.from(text.trim());
+      const units = [];
+      let pendingPrefix = '';
+      let pendingSpaces = '';
+      let wordBuffer = '';
+
+      function pushUnit(unitText, kind) {
+        if (!unitText) return;
+        units.push({
+          text: pendingPrefix + unitText,
+          kind,
+          spaceBefore: pendingSpaces && units.length ? metrics.measure(pendingSpaces) : 0,
+          width: metrics.measure(pendingPrefix + unitText)
+        });
+        pendingPrefix = '';
+        pendingSpaces = '';
+      }
+
+      function flushWord() {
+        if (!wordBuffer) return;
+        pushUnit(wordBuffer, 'word');
+        wordBuffer = '';
+      }
+
+      for (const char of chars) {
+        if (/\s/.test(char)) {
+          flushWord();
+          pendingSpaces += char;
+          continue;
+        }
+
+        if (isAsciiWordChar(char)) {
+          wordBuffer += char;
+          continue;
+        }
+
+        flushWord();
+
+        if (openingPunctuation.has(char)) {
+          pendingPrefix += char;
+          continue;
+        }
+
+        if (closingPunctuation.has(char) && units.length) {
+          const lastUnit = units[units.length - 1];
+          lastUnit.text += char;
+          lastUnit.width = metrics.measure(lastUnit.text);
+          pendingSpaces = '';
+          continue;
+        }
+
+        pushUnit(char, 'char');
+      }
+
+      flushWord();
+
+      if (pendingPrefix) {
+        units.push({
+          text: pendingPrefix,
+          kind: 'char',
+          spaceBefore: pendingSpaces && units.length ? metrics.measure(pendingSpaces) : 0,
+          width: metrics.measure(pendingPrefix)
+        });
+      }
+
+      return units;
+    }
+
+    function breakIntoLines(text, maxWidth, fontSpec) {
+      const metrics = getTextMetrics(fontSpec);
+      const units = tokenizeUnits(text, metrics);
+      const lines = [];
+      let currentLine = [];
+      let currentWidth = 0;
+
+      for (const unit of units) {
+        const spacing = currentLine.length ? unit.spaceBefore : 0;
+        const unitWidth = unit.width + spacing;
+
+        if (currentLine.length && currentWidth + unitWidth > maxWidth) {
+          lines.push(currentLine);
+          currentLine = [{ ...unit, spaceBefore: 0 }];
+          currentWidth = unit.width;
+          continue;
+        }
+
+        currentLine.push({ ...unit, spaceBefore: spacing });
+        currentWidth += currentLine.length === 1 ? unit.width : unitWidth;
+      }
+
+      if (currentLine.length) {
+        lines.push(currentLine);
+      }
+
+      if (!lines.length) {
+        lines.push([]);
+      }
+
+      return lines;
+    }
+
+    function getLineWidth(line) {
+      return line.reduce((sum, unit, index) => {
+        return sum + unit.width + (index > 0 ? unit.spaceBefore : 0);
+      }, 0);
+    }
+
+    function renderExportLine(line, options) {
+      const { width, align = 'left', justify = false, lineHeight } = options;
+      const gapCount = Math.max(line.length - 1, 0);
+      const baseWidth = getLineWidth(line);
+      const extraSpacing = justify && gapCount > 0 ? Math.max(width - baseWidth, 0) / gapCount : 0;
+      const justifyStyle = align === 'right' ? 'text-align: right;' : align === 'center' ? 'text-align: center;' : '';
+      const unitsHtml = line.map((unit, index) => {
+        const marginLeft = index === 0 ? 0 : unit.spaceBefore + (justify ? extraSpacing : 0);
+        return `<span class="export-unit" style="margin-left: ${marginLeft.toFixed(2)}px;">${escapeHtml(unit.text)}</span>`;
+      }).join('');
+
+      return `<div class="export-line" style="line-height: ${lineHeight}px; min-height: ${lineHeight}px; ${justifyStyle}">${unitsHtml}</div>`;
+    }
+
+    function renderExportBlock(text, options) {
+      const lines = breakIntoLines(text, options.width, options.font);
+      return lines.map((line, index) => {
+        const shouldJustify = options.align === 'justify' && index < lines.length - 1 && line.length > 1;
+        return renderExportLine(line, {
+          width: options.width,
+          align: options.align === 'justify' ? 'left' : options.align,
+          justify: shouldJustify,
+          lineHeight: options.lineHeight
+        });
+      }).join('');
+    }
+
+    function renderExportContent(blocks, styles) {
+      const bodyFontSize = parseFloat(styles.fontSize);
+      const titleFontSize = parseFloat(styles.titleSize);
+      const contentWidth = CARD_WIDTH - parseFloat(styles.padding) * 2;
+      const bodyFont = {
+        family: '"Noto Sans SC", sans-serif',
+        size: bodyFontSize,
+        weight: 400
+      };
+      const titleFont = {
+        family: styles.titleFont,
+        size: titleFontSize,
+        weight: 700
+      };
+      const bodyLineHeight = bodyFontSize * parseFloat(styles.lineHeight);
+      const titleLineHeight = titleFontSize * 1.4;
+      const paragraphSpacing = bodyFontSize * 1.4;
+      const listSpacing = bodyFontSize * 1.2;
+      const listItemSpacing = bodyFontSize * 0.8;
+
+      return blocks.map((block, index) => {
+        const isLastBlock = index === blocks.length - 1;
+
+        switch (block.type) {
+          case 'title': {
+            const marginTop = index > 0 ? titleFontSize * 0.5 : 0;
+            const marginBottom = isLastBlock ? 0 : 40;
+            return `
+              <div class="title export-block" style="font-family: ${styles.titleFont}; font-size: ${styles.titleSize}; font-weight: 700; color: var(--late-red); margin-top: ${marginTop}px; margin-bottom: ${marginBottom}px;">
+                ${renderExportBlock(block.text, {
+                  width: contentWidth,
+                  align: 'center',
+                  font: titleFont,
+                  lineHeight: titleLineHeight
+                })}
+              </div>
+            `;
+          }
+          case 'right': {
+            const marginBottom = isLastBlock ? 0 : 20;
+            return `
+              <div class="align-right export-block" style="margin-bottom: ${marginBottom}px;">
+                ${renderExportBlock(block.text, {
+                  width: contentWidth,
+                  align: 'right',
+                  font: bodyFont,
+                  lineHeight: bodyLineHeight
+                })}
+              </div>
+            `;
+          }
+          case 'quote': {
+            const quoteWidth = Math.max(contentWidth - 44, 0);
+            const marginBottom = isLastBlock ? 0 : paragraphSpacing;
+            return `
+              <div class="quote export-block" style="margin-bottom: ${marginBottom}px;">
+                ${block.lines.map(line => renderExportBlock(line, {
+                  width: quoteWidth,
+                  align: 'left',
+                  font: bodyFont,
+                  lineHeight: bodyLineHeight
+                })).join('')}
+              </div>
+            `;
+          }
+          case 'list': {
+            const indent = bodyFontSize * 1.5;
+            const marginBottom = isLastBlock ? 0 : listSpacing;
+            return `
+              <div class="export-list export-block" style="margin-bottom: ${marginBottom}px;">
+                ${block.items.map((item, itemIndex) => {
+                  const itemMarginBottom = itemIndex === block.items.length - 1 ? 0 : listItemSpacing;
+                  return `
+                    <div class="export-list-item" style="position: relative; padding-left: ${indent}px; margin-bottom: ${itemMarginBottom}px;">
+                      <span style="position: absolute; left: 0; top: 0; width: ${indent}px; line-height: ${bodyLineHeight}px;">•</span>
+                      ${renderExportBlock(item, {
+                        width: contentWidth - indent,
+                        align: 'left',
+                        font: bodyFont,
+                        lineHeight: bodyLineHeight
+                      })}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `;
+          }
+          case 'paragraph':
+          default: {
+            const marginBottom = isLastBlock ? 0 : paragraphSpacing;
+            return `
+              <div class="export-block" style="margin-bottom: ${marginBottom}px;">
+                ${renderExportBlock(block.text, {
+                  width: contentWidth,
+                  align: 'justify',
+                  font: bodyFont,
+                  lineHeight: bodyLineHeight
+                })}
+              </div>
+            `;
+          }
+        }
+      }).join('');
     }
 
     // 获取当前样式（不强制修改输入值）
@@ -803,7 +1103,8 @@
       exportBtn.disabled = false;
 
       previewWrapper.innerHTML = pages.map((pageText, index) => {
-        const content = parseText(pageText.trim(), styles);
+        const blocks = parseBlocks(pageText.trim());
+        const content = renderPreviewContent(blocks, styles);
         const cardHtml = generatePageCard(content, index, pages.length, styles);
         return `
           <div class="preview-item">
@@ -837,10 +1138,15 @@
       exportBtn.disabled = true;
 
       try {
+        if (document.fonts && document.fonts.ready) {
+          await document.fonts.ready;
+        }
+
         const zip = new JSZip();
 
         for (let i = 0; i < pages.length; i++) {
-          const content = parseText(pages[i].trim(), styles);
+          const blocks = parseBlocks(pages[i].trim());
+          const content = renderExportContent(blocks, styles);
           const cardHtml = generatePageCard(content, i, pages.length, styles);
 
           // 创建临时元素
