@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>晚点风格图片生成器</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
   <style>
@@ -355,6 +355,7 @@
       color: var(--late-dark);
       line-height: 2;
       text-align: justify;
+      word-break: break-all;
     }
 
     .page-content .body-text p {
@@ -853,10 +854,11 @@
           const glowContainer = card.querySelector('.glow-container');
           if (glowContainer) generateGlows(glowContainer, height);
 
-          const canvas = await htmlToImage.toCanvas(card, {
-            pixelRatio: 1.5,
-            backgroundColor: '#ffffff',
-            skipFonts: true
+          const canvas = await html2canvas(card, {
+            scale: 1.5,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
           });
           const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
           zip.file(`page_${String(i + 1).padStart(2, '0')}.jpg`, blob);
